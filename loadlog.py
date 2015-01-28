@@ -105,7 +105,7 @@ if __name__ == '__main__':
     parser.add_argument('--interval', type=int, default=1800, help='Time interval (s) between logs. Minimum of 60s')
     parser.add_argument('--postwait', type=int, default=1800, help='Time (s) to wait after program has finished '
                                                                    'before recording final load log')
-    parser.add_argument('--poll_interval', type=int, default=60, help='Time interval (s) between polling')
+    #parser.add_argument('--poll_interval', type=int, default=60, help='Time interval (s) between polling')
     parser.add_argument('--computer', type=str, default='Unknown', help='Name of current machine')
     parser.add_argument('--logfile', type=str, default='load.log', help='Log file save path')
     args = parser.parse_args()
