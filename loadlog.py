@@ -70,8 +70,6 @@ class stats(object):
         self.memory_used = self._memory.used
 
         summary = {'datetime': self.datetime.isoformat(sep=' '),
-                   'cpu_temp': self.cpu_temp,
-                   'fan_speed': self.fan_speed,
                    'percpu_percent': self.percpu_percent,
                    'memory_percent': self.memory_percent,
                    }
@@ -105,16 +103,12 @@ class advanced_stats(stats):
         return summary
 
 
-def log_entry(entry, logfile_path, started=True, cpu_logical_count=8, advanced=False):
-    header = ['date', 'time', 'status', 'percent_memory_used'] + ['percent_cpu' + i for i in range(cpu_logical_count)]
-    if advanced:
-        header += ['cpu_temp', 'fan_speed']
-
+def log_entry(entry, logfile_path, status=True, cpu_logical_count=8, advanced=False):
     with open(args.logfile, 'a') as file_handle:
         row = entry['datetime'].split(' ') + [status, entry['memory_percent']] + entry['percpu_percent']
         if advanced:
             row += [entry['cpu_temp'], entry['fan_speed']]
-        print('\t'.join(row), f=file_handle)
+        print('\t'.join(map(str,row)), file=file_handle)
 
 
 if __name__ == '__main__':
@@ -143,27 +137,33 @@ if __name__ == '__main__':
         print('# total_memory : {0}'.format(s.total_memory), file=f)
         print('# wait : {0}, {1}, {2}'.format(args.prewait, args.interval, args.postwait), file=f)
 
-    log_entry(s.now(), f) # Get stats right before starting
+        header = ['date', 'time', 'status', 'percent_memory_used'] + ['percent_cpu{0}'.format(i) for i in range(s.cpu_logical_count)]
+        if args.advanced:
+            header += ['cpu_temp', 'fan_speed']
+        print('\t'.join(map(str,header)), file=f)
 
+    print('Prewait. {0} seconds'.format(args.prewait))
     # Prewait
-    prewait_start = datetime.now()
+    prewait_start = datetime.datetime.now()
     while True:
-        log_entry(s.now(), f, started=False, cpu_logical_count=s.cpu_logical_count, advanced_stats=args.advanced)
+        log_entry(s.now(), f, status=False, cpu_logical_count=s.cpu_logical_count, advanced=args.advanced)
         time.sleep(args.interval)
-        if datetime.now() - prewait_start >= args.prewait:
+        delta = datetime.datetime.now() - prewait_start
+        if delta.seconds >= args.prewait:
             break
     print('Program started')
     # Program running
     program = proc.Popen(args.command.split(' '))
     while program.poll() is None:
-        log_entry(s.now(), f, started=True, cpu_logical_count=s.cpu_logical_count, advanced_stats=args.advanced)
+        log_entry(s.now(), f, status=True, cpu_logical_count=s.cpu_logical_count, advanced=args.advanced)
         print('.', end='')
         time.sleep(args.interval)
     print('\nProgram ended')
     # Postwait
-    postwait_start = datetime.now()
+    postwait_start = datetime.datetime.now()
     while True:
-        log_entry(s.now(), f, started=False, cpu_logical_count=s.cpu_logical_count, advanced_stats=args.advanced)
+        log_entry(s.now(), f, status=False, cpu_logical_count=s.cpu_logical_count, advanced=args.advanced)
         time.sleep(args.interval)
-        if datetime.now() - postwait_start >= args.postwait:
+        delta = datetime.datetime.now() - postwait_start 
+        if delta.seconds >= args.postwait:
             break
