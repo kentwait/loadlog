@@ -61,6 +61,24 @@ class stats(object):
         self.total_memory = psutil.virtual_memory().total
 
     def now(self):
+        self.datetime = datetime.datetime.now()
+        self.percpu_percent = psutil.cpu_percent(interval=0.1, percpu=True)
+        self.cpu_percent = psutil.cpu_percent(interval=0.1, percpu=False)
+        self._memory = psutil.virtual_memory()
+        self.memory_percent = self._memory.percent
+        self.memory_available = self._memory.available
+        self.memory_used = self._memory.used
+
+        summary = {'datetime': self.datetime.isoformat(sep=' '),
+                   'cpu_temp': self.cpu_temp,
+                   'fan_speed': self.fan_speed,
+                   'percpu_percent': self.percpu_percent,
+                   'memory_percent': self.memory_percent,
+                   }
+        return summary
+
+class advanced_stats(stats):
+    def now(self):
         cmd_lst = ['istats']
         self.datetime = datetime.datetime.now()
         istats_stdout = proc.check_output(cmd_lst).decode('utf-8')
@@ -86,13 +104,18 @@ class stats(object):
                    }
         return summary
 
-def log_entry(entry, logfile_path):
+
+def log_entry(entry, logfile_path, started=True, cpu_logical_count=8, advanced=False):
+    header = ['date', 'time', 'status', 'percent_memory_used'] + ['percent_cpu' + i for i in range(cpu_logical_count)]
+    if advanced:
+        header += ['cpu_temp', 'fan_speed']
+
     with open(args.logfile, 'a') as file_handle:
-        print('+ {0}'.format(entry['datetime']), file=file_handle)
-        print('  cpu_temp : {0}'.format(entry['cpu_temp']), file=file_handle)
-        print('  fan_speed : {0}'.format(entry['fan_speed']), file=file_handle)
-        print('  percpu_percent : {0}'.format(entry['percpu_percent']), file=file_handle)
-        print('  memory_percent : {0}'.format(entry['memory_percent']), file=file_handle)
+        row = entry['datetime'].split(' ') + [status, entry['memory_percent']] + entry['percpu_percent']
+        if advanced:
+            row += [entry['cpu_temp'], entry['fan_speed']]
+        print('\t'.join(row), f=file_handle)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Run a command-line program, '
@@ -107,6 +130,7 @@ if __name__ == '__main__':
                                                                    'before recording final load log')
     #parser.add_argument('--poll_interval', type=int, default=60, help='Time interval (s) between polling')
     parser.add_argument('--computer', type=str, default='Unknown', help='Name of current machine')
+    parser.add_argument('--advanced', action='store_true', default=False, help='Record CPU temp and fan speed (requires iStats ruby gem installed)')
     parser.add_argument('--logfile', type=str, default='load.log', help='Log file save path')
     args = parser.parse_args()
 
@@ -120,12 +144,26 @@ if __name__ == '__main__':
         print('# wait : {0}, {1}, {2}'.format(args.prewait, args.interval, args.postwait), file=f)
 
     log_entry(s.now(), f) # Get stats right before starting
-    time.sleep(args.prewait)
-    program = proc.Popen(args.command.split(' '))
 
-    polled_time = 0
-    while program.poll() is None:
-        log_entry(s.now(), f)
+    # Prewait
+    prewait_start = datetime.now()
+    while True:
+        log_entry(s.now(), f, started=False, cpu_logical_count=s.cpu_logical_count, advanced_stats=args.advanced)
         time.sleep(args.interval)
-    time.sleep(args.postwait)
-    log_entry(s.now(), f) # Log after completion
+        if datetime.now() - prewait_start >= args.prewait:
+            break
+    print('Program started')
+    # Program running
+    program = proc.Popen(args.command.split(' '))
+    while program.poll() is None:
+        log_entry(s.now(), f, started=True, cpu_logical_count=s.cpu_logical_count, advanced_stats=args.advanced)
+        print('.', end='')
+        time.sleep(args.interval)
+    print('\nProgram ended')
+    # Postwait
+    postwait_start = datetime.now()
+    while True:
+        log_entry(s.now(), f, started=False, cpu_logical_count=s.cpu_logical_count, advanced_stats=args.advanced)
+        time.sleep(args.interval)
+        if datetime.now() - postwait_start >= args.postwait:
+            break
